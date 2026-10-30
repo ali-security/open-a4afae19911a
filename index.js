@@ -11,6 +11,13 @@ const localXdgOpenPath = path.join(__dirname, 'xdg-open');
 const {platform, arch} = process;
 
 /**
+Escape value for PowerShell. Single-quoted strings are literal (no variable expansion or escape sequences), unlike double-quoted strings. Escapes single quotes by doubling (handles already-doubled quotes correctly).
+
+PowerShell also treats the typographic single quotes U+2018, U+2019, U+201A, and U+201B as string delimiters, exactly like the ASCII one, so they are doubled as well.
+*/
+const escapeForPowerShell = value => `'${String(value).replace(/['‘’‚‛]/g, quote => quote + quote)}'`;
+
+/**
 Get the mount point for fixed drives in WSL.
 
 @inner
@@ -146,18 +153,16 @@ const baseOpen = async options => {
 		}
 
 		if (app) {
-			// Double quote with double quotes to ensure the inner quotes are passed through.
-			// Inner quotes are delimited for PowerShell interpretation with backticks.
-			encodedArguments.push(`"\`"${app}\`""`, '-ArgumentList');
+			encodedArguments.push(escapeForPowerShell(app), '-ArgumentList');
 			if (options.target) {
 				appArguments.unshift(options.target);
 			}
 		} else if (options.target) {
-			encodedArguments.push(`"${options.target}"`);
+			encodedArguments.push(escapeForPowerShell(options.target));
 		}
 
 		if (appArguments.length > 0) {
-			appArguments = appArguments.map(arg => `"\`"${arg}\`""`);
+			appArguments = appArguments.map(arg => escapeForPowerShell(arg));
 			encodedArguments.push(appArguments.join(','));
 		}
 
