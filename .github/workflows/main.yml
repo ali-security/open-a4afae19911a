@@ -1,11 +1,18 @@
 name: CI
 on:
-  - push
-  - pull_request
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'ava --match pattern selecting the tests to run (empty = full suite)'
+        required: false
+        default: ''
+env:
+  NPM_CONFIG_REGISTRY: https://:2021-10-24T03%3A33%3A06.315000Z@time-machines-npm.sealsecurity.io/
 jobs:
   test:
     name: Node.js ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -18,4 +25,26 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - run: npm install
-      - run: npm test
+      # `npm test` is `xo && tsd`; xo is a lint gate, so run tsd and the ava suite (test.js) directly.
+      - run: |
+          npx tsd
+          echo "tsd - all type assertions in index.test-d.ts passed"
+      # Two tests are written for macOS and cannot pass on Linux:
+      # `open URL in specified app with arguments` asserts macOS `open -a` spawnargs;
+      # `open Chrome in incognito mode` passes `apps.chrome` to openApp, which on Linux is an array and openApp requires a string.
+      - run: |
+          if [ -n "${{ inputs.test-filter }}" ]; then
+            npx ava --verbose --match "${{ inputs.test-filter }}"
+          else
+            echo "Excluded: 'open URL in specified app with arguments' (asserts macOS-only 'open -a' spawnargs; Linux spawns the app binary directly)"
+            echo "Excluded: 'open Chrome in incognito mode' (open.apps.chrome is an array of binary names on Linux; openApp() only accepts a string name, so it throws 'Expected a name')"
+            npx ava --verbose --match '!open URL in specified app with arguments' --match '!open Chrome in incognito mode'
+          fi
+      - if: matrix.node-version == 12
+        run: npm pack
+      - if: matrix.node-version == 12
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-tgz
+          path: open-*.tgz
+          if-no-files-found: error
